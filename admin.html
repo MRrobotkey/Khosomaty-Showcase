@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة تحكم خصوماتي SA</title>
+    
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700&display=swap" rel="stylesheet">
+    
+    <!-- Admin CSS -->
+    <link rel="stylesheet" href="admin.css">
+
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+</head>
+<body>
+
+    <!-- Login Overlay -->
+    <div id="loginOverlay" class="login-overlay">
+        <div class="login-box">
+            <h2>تسجيل الدخول للوحة التحكم</h2>
+            <input type="password" id="adminPassword" placeholder="كلمة المرور..." onkeyup="if(event.key === 'Enter') checkPassword()">
+            <button onclick="checkPassword()">دخول</button>
+            <p id="loginError" style="color: #ff4444; display: none; margin-top: 10px;">كلمة المرور غير صحيحة!</p>
+        </div>
+    </div>
+
+    <!-- Main Dashboard Structure (Hidden until login) -->
+    <div id="dashboardWrapper" class="dashboard-wrapper" style="display: none;">
+        
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <span>خصوماتي</span> <span style="color:#FF9900;">Admin</span>
+            </div>
+            <nav class="sidebar-nav">
+                <button onclick="switchTab('stats')" class="nav-btn active" id="tab-stats"><i class="fa-solid fa-chart-pie"></i> الإحصائيات</button>
+                <button onclick="switchTab('stores')" class="nav-btn" id="tab-stores"><i class="fa-solid fa-store"></i> إدارة المتاجر</button>
+                <button onclick="switchTab('categories')" class="nav-btn" id="tab-categories"><i class="fa-solid fa-tags"></i> إدارة التصنيفات</button>
+                <button onclick="switchTab('brands')" class="nav-btn" id="tab-brands"><i class="fa-solid fa-copyright"></i> إدارة الماركات</button>
+                <button onclick="switchTab('products')" class="nav-btn" id="tab-products"><i class="fa-solid fa-box"></i> إدارة المنتجات</button>
+                <button onclick="switchTab('messages')" class="nav-btn" id="tab-messages"><i class="fa-solid fa-envelope"></i> الرسائل <span id="msgCountBadge" style="background:#ff4444; color:#fff; border-radius:50%; padding:2px 6px; font-size:12px; margin-right:auto; display:none;">0</span></button>
+                <button onclick="switchTab('deals')" class="nav-btn" id="tab-deals"><i class="fa-solid fa-gift"></i> العروض</button>
+            </nav>
+            <div class="sidebar-footer">
+                <button onclick="logout()" class="nav-btn text-danger"><i class="fa-solid fa-right-from-bracket"></i> تسجيل الخروج</button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="top-header">
+                <h2>مرحباً بك في لوحة التحكم 👋</h2>
+                <div style="display:flex; align-items:center; gap:20px;">
+                    <div style="display:flex; align-items:center; gap:10px; background:var(--card-bg); padding:8px 15px; border-radius:20px; border:1px solid var(--border);">
+                        <label for="maintenanceToggle" style="cursor:pointer; font-weight:bold;">وضع الصيانة:</label>
+                        <input type="checkbox" id="maintenanceToggle" onchange="toggleMaintenanceMode()" style="cursor:pointer; width:20px; height:20px;">
+                    </div>
+                    <div class="live-status">
+                        <span class="pulse-dot"></span>
+                        <span id="adminLiveUsers">0</span> زائر مباشر
+                    </div>
+                </div>
+            </header>
+
+            <!-- DEALS TAB -->
+            <div id="view-deals" class="view-section" style="display:none;">
+                <div class="section-header">
+                    <h2>إدارة العروض</h2>
+                    <button class="primary-btn" onclick="openAddDealModal()"><i class="fa-solid fa-plus"></i> إضافة نوع عرض</button>
+                </div>
+                
+                <div style="background:var(--card-bg); padding:15px; border-radius:10px; margin-bottom:20px; border:1px solid var(--border);">
+                    <label style="color:var(--text-muted); font-size:14px; margin-bottom:10px; display:block;">البحث في العروض:</label>
+                    <input type="text" id="searchDeal" placeholder="ابحث باسم العرض أو الكلمة المفتاحية..." oninput="filterDealsTable()" style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border); background:var(--bg-dark); color:white;">
+                </div>
+                
+                <div class="data-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>المعرف (ID)</th>
+                                <th>اسم العرض</th>
+                                <th>الكلمات المفتاحية (تلقائي)</th>
+                                <th>إجراءات</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dealsTableBody">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- 1. Stats View -->
+            <section id="view-stats" class="view-section active">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <i class="fa-solid fa-users stat-icon"></i>
+                        <div class="stat-info">
+                            <h3>إجمالي المستخدمين</h3>
+                            <p id="totalUsersCount">0</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <i class="fa-solid fa-box-open stat-icon"></i>
+                        <div class="stat-info">
+                            <h3>إجمالي المنتجات</h3>
+                            <p id="totalProductsCount">0</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <i class="fa-solid fa-store stat-icon"></i>
+                        <div class="stat-info">
+                            <h3>المتاجر النشطة</h3>
+                            <p id="totalStoresCount">0</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <hr style="border: 1px solid var(--border); margin: 30px 0;">
+                
+                <div class="section-header">
+                    <h3>إحصائيات الزوار</h3>
+                    <div style="display:flex; gap:10px;">
+                        <select id="analyticsFilter" onchange="updateAnalyticsStats()" style="padding:10px; border-radius:8px; border:1px solid var(--border); background:var(--bg-dark); color:white;">
+                            <option value="24h">آخر 24 ساعة</option>
+                            <option value="7d">آخر أسبوع</option>
+                            <option value="30d">آخر شهر</option>
+                            <option value="all">كل الوقت</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="stats-grid" style="margin-top: 15px;">
+                    <div class="stat-card" style="border-left: 4px solid var(--primary-color);">
+                        <i class="fa-solid fa-eye stat-icon" style="color: var(--primary-color);"></i>
+                        <div class="stat-info">
+                            <h3>عدد الزوار</h3>
+                            <p id="analyticsVisitorsCount">0</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 2. Stores View -->
+            <section id="view-stores" class="view-section" style="display: none;">
+                <div class="section-header">
+                    <h3>المتاجر</h3>
+                    <div style="display:flex; gap:10px;">
+                        <input type="text" id="searchStore" placeholder="ابحث عن متجر..." oninput="filterStoresTable()" style="padding:10px; border-radius:8px; border:1px solid var(--border); background:var(--bg-dark); color:white;">
+                        <button class="primary-btn" onclick="openAddStoreModal()"><i class="fa-solid fa-plus"></i> إضافة متجر جديد</button>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table id="storesTable">
+                        <thead>
+                            <tr>
+                                <th>المعرف (ID)</th>
+                                <th>اسم المتجر</th>
+                                <th>تصميم البادج</th>
+                                <th>الحالة</th>
+                                <th>إجراءات</th>
+                            </tr>
+                        </thead>
+                        <tbody id="storesTableBody">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- 2.5 Categories View -->
+            <section id="view-categories" class="view-section" style="display: none;">
+                <div class="section-header">
+                    <h3>إدارة التصنيفات</h3>
+                </div>
+                <div style="background:var(--card-bg); padding:20px; border-radius:15px; border:1px solid var(--border); margin-bottom:20px;">
+                    <label style="display:block; margin-bottom:10px; color:var(--text-muted);">اختر المتجر لاستعراض وإدارة تصنيفاته:</label>
+                    <select id="catStoreSelect" onchange="loadStoreCategories()" style="width:100%; max-width:400px; padding:10px; border-radius:8px; border:1px solid var(--border); background:var(--bg-dark); color:white;"></select>
+                </div>
+                <div id="categoriesManager" style="display:none;">
+                    <div class="section-header">
+                        <h4>التصنيفات الحالية</h4>
+                        <button class="primary-btn" onclick="openAddCategoryModal()"><i class="fa-solid fa-plus"></i> إضافة تصنيف جديد</button>
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>القسم الرئيسي</th>
+                                    <th>الأقسام الفرعية</th>
+                                    <th>إجراءات</th>
+                                </tr>
+                            </thead>
+                            <tbody id="categoriesTableBody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 4. Brands View -->
+            <section id="view-brands" class="view-section" style="display: none;">
+                <div class="section-header">
+                    <h3>الماركات (Brands)</h3>
+                    <div style="display:flex; gap:10px;">
+                        <input type="text" id="searchBrand" placeholder="ابحث عن ماركة..." oninput="filterBrandsTable()" style="padding:10px; border-radius:8px; border:1px solid var(--border); background:var(--bg-dark); color:white;">
+                        <button class="primary-btn" onclick="openAddBrandModal()"><i class="fa-solid fa-plus"></i> إضافة ماركة</button>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table id="brandsTable">
+                        <thead>
+                            <tr>
+                                <th>المعرف (ID)</th>
+                                <th>اسم الماركة</th>
+                                <th>الأيقونة</th>
+                                <th>إجراءات</th>
+                            </tr>
+                        </thead>
+                        <tbody id="brandsTableBody"></tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- 5. Products View -->
+            <section id="view-products" class="view-section" style="display: none;">
+                <div class="section-header">
+                    <h3>جميع المنتجات</h3>
+                    <div style="display:flex; gap:10px;">
+                        <select id="filterProductStore" onchange="filterProductsTable()" style="padding:10px; border-radius:8px; border:1px solid var(--border); background:var(--bg-dark); color:white;">
+                            <option value="all">كل المتاجر</option>
+                        </select>
+                        <input type="text" id="searchProduct" placeholder="ابحث بالاسم..." oninput="filterProductsTable()" style="padding:10px; border-radius:8px; border:1px solid var(--border); background:var(--bg-dark); color:white;">
+                        <button class="primary-btn" onclick="openAddProductModal()"><i class="fa-solid fa-plus"></i> إضافة منتج يدوياً</button>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table id="productsTable">
+                        <thead>
+                            <tr>
+                                <th>الصورة</th>
+                                <th>الاسم</th>
+                                <th>السعر</th>
+                                <th>المتجر</th>
+                                <th>القسم</th>
+                                <th>الحالة</th>
+                                <th>إجراءات</th>
+                            </tr>
+                        </thead>
+                        <tbody id="productsTableBody">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            
+            <!-- 4. Messages View -->
+            <section id="view-messages" class="view-section" style="display: none;">
+                <div class="section-header">
+                    <h3>صندوق الرسائل</h3>
+                    <div style="display:flex; gap:10px;">
+                        <input type="text" id="searchMessage" placeholder="ابحث في الرسائل..." oninput="filterMessages()" style="padding:10px; border-radius:8px; border:1px solid var(--border); background:var(--bg-dark); color:white;">
+                        <select id="msgFilter" onchange="filterMessages()" style="padding:10px; border-radius:8px; border:1px solid var(--border); background:var(--bg-dark); color:white;">
+                            <option value="all">الكل</option>
+                            <option value="اقتراح">الاقتراحات فقط</option>
+                            <option value="شكوى">الشكاوى فقط</option>
+                            <option value="لدعمنا وضمان استمرارنا">رسائل الدعم فقط</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>التاريخ</th>
+                                <th>النوع</th>
+                                <th>الرسالة</th>
+                                <th>إجراءات</th>
+                            </tr>
+                        </thead>
+                        <tbody id="messagesTableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Modals (Add Store, Add Product, Edit Product) will go here -->
+    <!-- Add Store Modal -->
+    <div id="storeModal" class="admin-modal">
+        <div class="admin-modal-content">
+            <h3 id="storeModalTitle">إضافة متجر جديد</h3>
+            <div class="form-group">
+                <label>معرف المتجر (مثال: shein، نرجو عدم استخدام مسافات)</label>
+                <input type="text" id="storeIdInput" placeholder="shein">
+            </div>
+            <div class="form-group">
+                <label>اسم المتجر للجمهور (مثال: شي إن)</label>
+                <input type="text" id="storeLabelInput" placeholder="شي إن">
+            </div>
+            <div class="form-group">
+                <label>اللون/الكلاس (مثال: noon-badge-logo او amazon-badge-logo)</label>
+                <input type="text" id="storeClassInput" placeholder="amazon-badge-logo">
+            </div>
+            <div class="modal-actions">
+                <button onclick="closeModals()" class="cancel-btn">إلغاء</button>
+                <button onclick="saveStore()" class="save-btn">حفظ</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add/Edit Product Modal -->
+    <div id="productModal" class="admin-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="productModalTitle">إضافة منتج</h3>
+                <button onclick="closeModals()" style="background:transparent; border:none; color:white; cursor:pointer;"><i class="fa-solid fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="prodEditId">
+                <input type="hidden" id="prodEditStore">
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px;">
+                    <div>
+                        <label>المتجر *</label>
+                        <select id="prodStoreInput" class="modal-input"></select>
+                    </div>
+                    <div>
+                        <label>الماركة</label>
+                        <select id="prodBrandInput" class="modal-input">
+                            <option value="">بدون ماركة</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>التصنيف الرئيسي *</label>
+                        <input type="text" id="prodMainCatInput" class="modal-input" placeholder="مثال: الجوالات">
+                    </div>
+                    <div>
+                        <label>التصنيف الفرعي *</label>
+                        <input type="text" id="prodSubCatInput" class="modal-input" placeholder="مثال: ابل">
+                    </div>
+                </div>
+                
+                <label>اسم المنتج *</label>
+                <input type="text" id="prodNameInput" class="modal-input">
+                
+                <label>العرض (Deal) <small style="color:var(--text-muted);">(اختياري للربط اليدوي)</small></label>
+                <select id="prodDealInput" class="modal-input">
+                    <option value="">بدون عرض</option>
+                </select>
+
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px;">
+                    <div>
+                        <label>السعر الحالي</label>
+                        <input type="number" id="prodPriceNowInput" class="modal-input">
+                    </div>
+                    <div>
+                        <label>السعر القديم</label>
+                        <input type="number" id="prodPriceBeforeInput" class="modal-input">
+                    </div>
+                </div>
+                <label>نسبة الخصم (اختياري)</label>
+                <input type="text" id="prodDiscInput" class="modal-input">
+                <label>رابط الصورة</label>
+                <input type="text" id="prodImgInput" class="modal-input">
+                <label>رابط الشراء</label>
+                <input type="text" id="prodLinkInput" class="modal-input">
+                <label>الوصف</label>
+                <textarea id="prodDescInput" class="modal-input" rows="2"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeModals()" class="cancel-btn">إلغاء</button>
+                <button onclick="saveProduct()" class="save-btn">حفظ</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add/Edit Brand Modal -->
+    <div id="brandModal" class="admin-modal">
+        <div class="modal-content">
+            <h3 id="brandModalTitle">إضافة ماركة جديدة</h3>
+            <input type="hidden" id="brandEditId">
+            <div class="form-group">
+                <label>المعرف (ID - إنجليزي فقط بدون مسافات، مثال: apple)</label>
+                <input type="text" id="brandIdInput" placeholder="apple">
+            </div>
+            <div class="form-group">
+                <label>اسم الماركة (مثال: أبل)</label>
+                <input type="text" id="brandLabelInput" placeholder="أبل">
+            </div>
+            <div class="form-group">
+                <label>رابط الأيقونة (صورة مسار URL)</label>
+                <input type="text" id="brandIconInput" placeholder="https://...">
+            </div>
+            <div class="modal-actions">
+                <button onclick="closeModals()" class="cancel-btn">إلغاء</button>
+                <button onclick="saveBrand()" class="save-btn">حفظ</button>
+            </div>
+        </div>
+        <!-- Add Deal Modal -->
+        <div id="addDealModal" class="modal-overlay">
+            <div class="modal-content" style="max-width:500px;">
+                <div class="modal-header">
+                    <h3>إضافة / تعديل عرض</h3>
+                    <button onclick="closeModals()" style="background:transparent; border:none; color:white; cursor:pointer;"><i class="fa-solid fa-times"></i></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="dealOldIdInput">
+                    <label>معرف العرض (ID) * <small style="color:var(--text-muted);">(حروف إنجليزية فقط مثل: national_day)</small></label>
+                    <input type="text" id="dealIdInput" class="modal-input" placeholder="national_day">
+                    
+                    <label>اسم العرض * <small style="color:var(--text-muted);">(الاسم الذي سيظهر للمستخدمين)</small></label>
+                    <input type="text" id="dealLabelInput" class="modal-input" placeholder="عروض اليوم الوطني">
+                    
+                    <label>الكلمات المفتاحية للربط التلقائي <small style="color:var(--text-muted);">(افصل بينها بفاصلة ،)</small></label>
+                    <input type="text" id="dealKeywordsInput" class="modal-input" placeholder="اليوم الوطني,خصم 90,نهاية العام">
+                    
+                    <div style="margin-top: 15px; display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="dealIsHiddenInput" style="width: 20px; height: 20px;">
+                        <label for="dealIsHiddenInput" style="margin:0; color:var(--text-color);">إخفاء العرض مؤقتاً من الموقع</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button onclick="closeModals()" class="cancel-btn">إلغاء</button>
+                    <button onclick="saveDeal()" class="save-btn">حفظ العرض</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="admin.js?v=2"></script>
+</body>
+</html>
+<script>window.onerror = function(m, s, l, c, e) { fetch(http://localhost:3000/log_error?m=&l=); };</script>

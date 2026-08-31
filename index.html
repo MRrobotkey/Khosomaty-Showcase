@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>خصوماتي SA - عروض حصرية</title>
+    
+    <!-- Swiper CSS (if needed) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@10/swiper-bundle.min.css" />
+    
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <link rel="stylesheet" href="styles.css?v=5">
+
+    <!-- Firebase -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+</head>
+<body>
+    <!-- Maintenance Overlay -->
+    <div id="maintenanceOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-color); z-index: 10000; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 20px;">
+        <h2 style="font-size: 24px; color: var(--text-color); margin-bottom: 20px;">نعتذر منكم، الموقع تحت الصيانة 🛠️</h2>
+        <div class="logo-wrapper" style="margin: 30px 0; animation: pulse 2s infinite;">
+            <span class="logo-main-text" style="font-size: 40px;">خصوماتي</span>
+            <span class="logo-sa" style="font-size: 20px;">SA</span>
+        </div>
+        <p style="color: var(--text-muted); font-size: 16px; max-width: 400px; line-height: 1.6;">نعمل بأقصى جهدنا الآن لتطوير التطبيق وجعله أسهل وأفضل لكم. سنعود للعمل قريباً جداً!</p>
+    </div>
+
+    <!-- Background Elements -->
+    <div class="bg-shape bg-shape-1"></div>
+    <div class="bg-shape bg-shape-2"></div>
+
+    <!-- Header -->
+    <header class="main-header glass">
+        <div class="header-top">
+            <button onclick="openSupportModal()" class="icon-btn" title="اقتراحات وشكاوى" style="display: flex; align-items: center; justify-content: center; text-decoration: none; color: inherit; background: transparent; border: none; cursor: pointer;">
+                <i class="fa-solid fa-envelope"></i>
+            </button>
+            <div class="brand-center" onclick="secretAdminDoor(); backToHome()">
+                <div class="logo-wrapper">
+                    <span class="logo-main-text">خصوماتي</span>
+                    <span class="logo-sa">SA</span>
+                </div>
+                <div class="live-users">
+                    <span class="pulse-dot"></span>
+                    <span id="liveUsersCount">0</span> متصل الآن
+                </div>
+            </div>
+            <button onclick="toggleThemeBottom()" id="themeBtn" class="icon-btn" title="تغيير المظهر"><i class="fa-solid fa-moon" id="themeIcon"></i></button>
+        </div>
+
+        <!-- Smart Search Bar -->
+        <form class="search-container" style="position: relative;" onsubmit="submitSearch(event)">
+            <input type="text" id="searchInput" oninput="handleSmartSearch()" placeholder="ابحث عن المنتجات هنا... (مثال: شا)">
+            <!-- Autocomplete suggestions dropdown -->
+            <div id="searchSuggestions" class="search-suggestions-dropdown"></div>
+        </form>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="content-area">
+        
+        <!-- ================= HOME VIEW ================= -->
+        <div id="homeView" class="view-section active">
+
+
+            <!-- Brands Grid -->
+            <section class="boxes-section" id="brandsSection" style="display:none;">
+                <h2 class="section-title">الماركات (Brands)</h2>
+                <div class="horizontal-scroll-container" id="homeBrandsGrid">
+                    <!-- Populated dynamically by script.js -->
+                </div>
+            </section>
+            
+            <!-- Deals Categories (Horizontal Scroll) -->
+            <section id="dealsSection" style="margin-top: 15px;">
+                <h2 class="section-title">العروض المميزة</h2>
+                <div class="horizontal-scroll-container" id="homeDealsGrid">
+                    <!-- Populated dynamically -->
+                </div>
+            </section>
+            
+            <!-- Stores Grid (Vertical Scroll, 2-3 per row) -->
+            <section class="boxes-section">
+                <h2 class="section-title">المتاجر</h2>
+                <div class="stores-grid-layout" id="homeStoresGrid">
+                    <!-- Populated dynamically by script.js -->
+                </div>
+            </section>
+            
+        </div>
+
+        <!-- ================= STORE CATEGORIES VIEW ================= -->
+        <div id="storeCategoriesView" class="view-section" style="display: none;">
+            <div class="products-header" style="position: relative; flex-direction: row; justify-content: center; align-items: center; min-height: 44px;">
+                <h2 id="storeCategoriesTitle" class="products-title">أقسام المتجر</h2>
+                <button class="back-icon-btn" onclick="backToHome()" style="position: absolute; right: 0; background: none; border: none; font-size: 24px; color: var(--text-color); cursor: pointer;"><i class="fa-solid fa-arrow-right"></i></button>
+            </div>
+            
+            <section class="boxes-section" style="margin-top: 15px;">
+                <div class="categories-grid" id="storeCategoriesGrid">
+                    <div class="box-card-small classic-card" onclick="filterByCategory('الإلكترونيات')" style="--cat-color: #2196F3;">
+                        <div class="box-icon" style="color: #2196F3;"><i class="fa-solid fa-mobile-screen"></i></div>
+                        <h3 class="box-name">الإلكترونيات</h3>
+                    </div>
+
+                    <div class="box-card-small classic-card" onclick="filterByCategory('قيمنق')" style="--cat-color: #9C27B0;">
+                        <div class="box-icon" style="color: #9C27B0;"><i class="fa-solid fa-gamepad"></i></div>
+                        <h3 class="box-name">قيمنق</h3>
+                    </div>
+                    
+                    <div class="box-card-small classic-card" onclick="filterByCategory('قسم الرجال')" style="--cat-color: #795548;">
+                        <div class="box-icon" style="color: #795548;"><i class="fa-solid fa-shirt"></i></div>
+                        <h3 class="box-name">رجالي</h3>
+                    </div>
+
+                    <div class="box-card-small classic-card" onclick="filterByCategory('قسم النساء')" style="--cat-color: #E91E63;">
+                        <div class="box-icon" style="color: #E91E63;"><i class="fa-solid fa-person-dress"></i></div>
+                        <h3 class="box-name">نسائي</h3>
+                    </div>
+
+                    <div class="box-card-small classic-card" onclick="filterByCategory('العناية والجمال')" style="--cat-color: #FF5252;">
+                        <div class="box-icon" style="color: #FF5252;"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+                        <h3 class="box-name">عناية وتجميل</h3>
+                    </div>
+
+                    <div class="box-card-small classic-card" onclick="filterByCategory('قسم المكاتب')" style="--cat-color: #009688;">
+                        <div class="box-icon" style="color: #009688;"><i class="fa-solid fa-book"></i></div>
+                        <h3 class="box-name">مكاتب</h3>
+                    </div>
+
+                    <div class="box-card-small classic-card" onclick="filterByCategory('قسم الأطفال')" style="--cat-color: #03A9F4;">
+                        <div class="box-icon" style="color: #03A9F4;"><i class="fa-solid fa-child-reaching"></i></div>
+                        <h3 class="box-name">أطفال</h3>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- ================= SUPPORT MODAL ================= -->
+    <div id="supportModal" class="product-modal" onclick="if(event.target===this) closeSupportModal()">
+        <div class="modal-content-wrapper glass" style="max-width: 400px; margin: 20px; text-align: right;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 20px;">
+                <h3 style="margin:0;">تواصل معنا</h3>
+                <button onclick="closeSupportModal()" style="background:none; border:none; color:var(--text-color); font-size:20px; cursor:pointer;"><i class="fa-solid fa-times"></i></button>
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; color: var(--text-muted);">نوع الرسالة</label>
+                <select id="supportType" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-color);">
+                    <option value="اقتراح">اقتراح 💡</option>
+                    <option value="شكوى">شكوى ⚠️</option>
+                    <option value="لدعمنا وضمان استمرارنا">لدعمنا وضمان استمرارنا 💖</option>
+                </select>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 5px; color: var(--text-muted);">نص الرسالة</label>
+                <textarea id="supportText" rows="4" style="width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-color); resize: none;" placeholder="اكتب رسالتك هنا..."></textarea>
+            </div>
+            
+            <button onclick="submitSupportMessage()" style="width: 100%; background: var(--primary-color); color: #000; font-weight: bold; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-size: 16px;">إرسال الرسالة</button>
+        </div>
+    </div>
+
+    <!-- ================= PRODUCT MODAL ================= -->
+        <!-- ================= PRODUCTS VIEW ================= -->
+        <div id="productsView" class="view-section" style="display: none;">
+            
+            <div class="products-header" style="position: relative; flex-direction: row; justify-content: center; align-items: center; min-height: 44px;">
+                <h2 id="productsTitle" class="products-title">جميع العروض</h2>
+                <button class="back-icon-btn" onclick="backToStoreCategories()" style="position: absolute; right: 0; background: none; border: none; font-size: 24px; color: var(--text-color); cursor: pointer;"><i class="fa-solid fa-arrow-right"></i></button>
+            </div>
+            
+            <!-- Inline Subcategories Container -->
+            <div id="inlineSubCategories" class="horizontal-scroll-container" style="display: none; margin-bottom: 20px;"></div>
+
+            <div class="grid-layout" id="cardsContainer">
+                <!-- Products will be injected here -->
+                <div style="grid-column: 1/-1; text-align: center; padding: 50px;">
+                    <div class="loader"></div>
+                    <p>جاري تجميع الصيدات...</p>
+                </div>
+            </div>
+
+        </div>
+
+        <div id="productModal" class="product-modal">
+            <!-- Modal Container -->
+            <div class="modal-content-wrapper">
+                
+                <!-- Scrollable Body (Header, Image, Text) -->
+                <div class="modal-scrollable-body">
+                    <div class="modal-header">
+                        <div class="modal-icon-circle" onclick="closeProductModal()">
+                            <i class="fa-solid fa-arrow-right"></i>
+                        </div>
+                        <div class="modal-icon-circle" onclick="toggleModalFavorite()" id="modalFavBtn">
+                            <i class="fa-regular fa-heart"></i>
+                        </div>
+                    </div>
+                    
+                    <div class="modal-image-area">
+                        <img id="modalImg" src="" alt="صورة المنتج">
+                    </div>
+                    
+                    <div class="modal-info-sheet">
+                        <div class="modal-sheet-header">
+                            <div class="modal-brand-chip" id="modalBrand">ماركة عامة</div>
+                            <div class="modal-rating">
+                                <i class="fa-solid fa-star" style="color:#FFC107;"></i>
+                                <span style="margin:0 5px;" id="modalRating">4.5</span>
+                                <span style="color:var(--text-gray); font-size:12px;">(تقييم)</span>
+                            </div>
+                        </div>
+                        
+                        <div class="modal-name" id="modalName">اسم المنتج</div>
+                        
+                        <div class="modal-desc-title">الوصف</div>
+                        <div class="modal-desc" id="modalDesc">لا يوجد وصف متاح.</div>
+                    </div>
+                </div>
+                
+                <!-- Fixed Bottom Row (Price and Button) -->
+                <div class="modal-bottom-row">
+                    <div class="modal-price-col">
+                        <div class="modal-old-price" id="modalOldPrice"></div>
+                        <div class="modal-new-price" id="modalPrice">0 ريال</div>
+                    </div>
+                    <button class="modal-buy-btn" onclick="openModalUrl()">
+                        اذهب للعرض <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                    </button>
+                </div>
+                
+            </div>
+        </div>
+
+        <!-- ================= BOTTOM NAVIGATION BAR ================= -->
+        <nav class="bottom-nav">
+            <button onclick="backToHome()" class="nav-item active" id="navHome">
+                <i class="fa-solid fa-house"></i>
+                <span>الرئيسية</span>
+            </button>
+            <button onclick="toggleFavoritesView()" class="nav-item" id="navFav">
+                <i class="fa-solid fa-heart"></i>
+                <span>المفضلة</span>
+            </button>
+        </nav>
+
+    </main>
+
+    <script src="script.js?v=15"></script>
+</body>
+</html>

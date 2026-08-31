@@ -1,0 +1,34 @@
+// 3. عرض منتجات التصنيف المختار (نسخة محسنة)
+        function loadDeals(category, btn) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            // مسح الحاوي قبل التحميل
+            const container = document.getElementById('dealsContainer');
+            container.innerHTML = '<p>جاري جلب أفضل العروض...</p>';
+
+            // استخدام once لضمان جلب البيانات مرة واحدة عند الضغط ومنع التداخل
+            db.ref('deals/' + category).once('value', (snapshot) => {
+                const deals = snapshot.val();
+                container.innerHTML = '';
+
+                if (!deals) {
+                    container.innerHTML = '<p>لا توجد عروض حالياً في هذا القسم.</p>';
+                    return;
+                }
+
+                for (let key in deals) {
+                    const item = deals[key];
+                    container.innerHTML += `
+                        <div class="card">
+                            <img src="${item.image_url}" alt="product">
+                            <h3>${item.name.substring(0, 40)}...</h3>
+                            <div class="price-before">${item.price_before} ر.س</div>
+                            <div class="price-now">${item.price_now} ر.س <span class="badge">${item.discount_percentage}% خصم</span></div>
+                            <div style="color: #f1c40f; margin-bottom: 10px;">⭐ ${item.rating}</div>
+                            <a href="${item.product_url}" target="_blank" class="buy-btn">مشاهدة العرض</a>
+                        </div>
+                    `;
+                }
+            });
+        }
