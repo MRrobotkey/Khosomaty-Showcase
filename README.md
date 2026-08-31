@@ -1,6 +1,6 @@
 # Khusomaty (Daily Deal) - Showcase Portfolio
 
-🚀 **Live Demo:** [Click here to view the frontend dashboards]([https://YOUR-USERNAME.github.io/Khosomaty-Showcase](https://mrrobotkey.github.io/Khosomaty-Showcase/)) 
+ **Live Demo:** [https://mrrobotkey.github.io/Khosomaty-Showcase/](https://mrrobotkey.github.io/Khosomaty-Showcase/) 
 *(Note: Replace the link above with your actual GitHub Pages URL after deployment).*
 
 An automated web scraping and price aggregation system designed to extract daily promotional offers from major e-commerce platforms like Amazon and Noon.
