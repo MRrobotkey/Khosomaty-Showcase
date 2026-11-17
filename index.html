@@ -4,6 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>خصوماتي SA - عروض حصرية</title>
+
+    <!-- PWA -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#6c5ce7">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="خصوماتي">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
     
     <!-- Swiper CSS (if needed) -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@10/swiper-bundle.min.css" />
@@ -11,13 +21,44 @@
     <!-- FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <link rel="stylesheet" href="styles.css?v=5">
+    <link rel="stylesheet" href="styles.css?v=7">
 
     <!-- Firebase -->
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+
+    <!-- Splash (CSS حرج مضمّن ليظهر فوراً قبل تحميل باقي الملفات) -->
+    <style>
+        #splash { position: fixed; inset: 0; z-index: 20000; display: flex; flex-direction: column; align-items: center; justify-content: center;
+                  background: var(--bg-color, #f9f9f9); cursor: pointer; transition: opacity .35s ease; -webkit-tap-highlight-color: transparent; }
+        #splash.hide { opacity: 0; pointer-events: none; }
+        #splash .splash-logo { display: flex; align-items: baseline; gap: 8px; animation: splashPulse 1.4s ease-in-out infinite; }
+        #splash .splash-name { font-size: 44px; font-weight: 900; color: var(--primary-color, #6c5ce7); }
+        #splash .splash-sa { font-size: 20px; font-weight: 800; color: var(--text-color, #222); opacity: .8; }
+        #splash .splash-hint { margin-top: 28px; font-size: 12px; color: var(--text-muted, #888); opacity: 0; animation: splashHint .4s ease 1s forwards; }
+        @keyframes splashPulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.12); opacity: .65; } }
+        @keyframes splashHint { to { opacity: 1; } }
+        @media (prefers-reduced-motion: reduce) { #splash .splash-logo { animation: none; } }
+    </style>
 </head>
 <body>
+    <!-- Intro: اسم التطبيق بنبض خفيف، اضغط على الشاشة للتخطي -->
+    <div id="splash" role="presentation">
+        <div class="splash-logo"><span class="splash-name">خصوماتي</span><span class="splash-sa">SA</span></div>
+        <div class="splash-hint">اضغط للتخطي</div>
+    </div>
+    <script>
+        (function () {
+            var s = document.getElementById('splash'), done = false;
+            window.hideSplash = function () {
+                if (done) return; done = true;
+                s.classList.add('hide');
+                setTimeout(function () { if (s.parentNode) s.parentNode.removeChild(s); }, 400);
+            };
+            s.addEventListener('click', window.hideSplash);
+            setTimeout(window.hideSplash, 6000); // أمان: لا يعلق إذا تعذر تحميل البيانات
+        })();
+    </script>
     <!-- Maintenance Overlay -->
     <div id="maintenanceOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-color); z-index: 10000; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 20px;">
         <h2 style="font-size: 24px; color: var(--text-color); margin-bottom: 20px;">نعتذر منكم، الموقع تحت الصيانة 🛠️</h2>
@@ -89,7 +130,6 @@
                     <!-- Populated dynamically by script.js -->
                 </div>
             </section>
-            
         </div>
 
         <!-- ================= STORE CATEGORIES VIEW ================= -->
@@ -243,6 +283,10 @@
                 <i class="fa-solid fa-house"></i>
                 <span>الرئيسية</span>
             </button>
+            <button onclick="showForYouView()" class="nav-item" id="navForYou">
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                <span>لك</span>
+            </button>
             <button onclick="toggleFavoritesView()" class="nav-item" id="navFav">
                 <i class="fa-solid fa-heart"></i>
                 <span>المفضلة</span>
@@ -251,6 +295,11 @@
 
     </main>
 
-    <script src="script.js?v=15"></script>
+    <script src="script.js?v=18"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(console.error));
+        }
+    </script>
 </body>
 </html>

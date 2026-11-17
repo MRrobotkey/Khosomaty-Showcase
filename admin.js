@@ -1,5 +1,8 @@
 // admin.js
+// ضع هنا apiKey و authDomain من: Firebase Console > Project settings > Your apps (Web)
 const firebaseConfig = {
+    apiKey: "PUT_YOUR_WEB_API_KEY_HERE",
+    authDomain: "proj-5252.firebaseapp.com",
     databaseURL: "https://proj-5252-default-rtdb.firebaseio.com"
 };
 if (!firebase.apps.length) {
@@ -15,20 +18,38 @@ let allMessages = [];
 let totalUsers = 0;
 let currentMaintenanceMode = false;
 
+// --- 🛡️ حماية XSS ---
+function esc(v) {
+    return String(v ?? '').replace(/[&<>"'`]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','`':'&#96;'}[c]));
+}
+function attr(v) { return esc(JSON.stringify(String(v ?? ''))); }
+function safeUrl(u) {
+    if (/^data:image\/(png|jpeg|gif|webp|svg\+xml);base64,[A-Za-z0-9+\/=]+$/.test(String(u))) return String(u);
+    try { const x = new URL(u, location.href); return (x.protocol === 'https:' || x.protocol === 'http:') ? x.href : ''; }
+    catch (e) { return ''; }
+}
+function editProductById(store, id) {
+    const p = allProducts.find(x => x.store === store && x.id === id);
+    if (p) editProduct(p);
+}
+
 // Simple Auth
-function checkPassword() {
+async function checkPassword() {
+    const email = document.getElementById('adminEmail').value.trim();
     const pw = document.getElementById('adminPassword').value;
-    if (pw === 'Ba55330') { 
+    try {
+        await firebase.auth().signInWithEmailAndPassword(email, pw);
         document.getElementById('loginOverlay').style.display = 'none';
         document.getElementById('dashboardWrapper').style.display = 'flex';
         initDashboard();
-    } else {
+    } catch (e) {
+        console.error(e);
         document.getElementById('loginError').style.display = 'block';
     }
 }
 
 function logout() {
-    location.reload();
+    firebase.auth().signOut().finally(() => location.reload());
 }
 
 // Navigation
@@ -169,13 +190,13 @@ function renderStoresTable() {
         
         tbody.innerHTML += `
             <tr style="${isHidden ? 'opacity:0.5;' : ''}">
-                <td>${storeId}</td>
-                <td>${meta.label}</td>
-                <td><span class="${meta.cssClass || 'noon-badge-logo'}" style="display:inline-block;">${meta.label}</span></td>
+                <td>${esc(storeId)}</td>
+                <td>${esc(meta.label)}</td>
+                <td><span class="${esc(meta.cssClass || 'noon-badge-logo')}" style="display:inline-block;">${esc(meta.label)}</span></td>
                 <td>${statusText}</td>
                 <td>
-                    <button class="action-btn" style="color:${eyeColor};" onclick="toggleStoreVisibility('${storeId}', ${isHidden})" title="إخفاء/إظهار">${eyeIcon}</button>
-                    <button class="action-btn delete-btn" onclick="deleteStore('${storeId}')" title="حذف المتجر"><i class="fa-solid fa-trash"></i></button>
+                    <button class="action-btn" style="color:${eyeColor};" onclick="toggleStoreVisibility(${attr(storeId)}, ${isHidden})" title="إخفاء/إظهار">${eyeIcon}</button>
+                    <button class="action-btn delete-btn" onclick="deleteStore(${attr(storeId)})" title="حذف المتجر"><i class="fa-solid fa-trash"></i></button>
                 </td>
             </tr>
         `;
@@ -197,8 +218,8 @@ function populateStoreSelect() {
     
     Object.keys(allStoresMeta).forEach(storeId => {
         const lbl = allStoresMeta[storeId].label;
-        selects[0].innerHTML += `<option value="${storeId}">${lbl} (${storeId})</option>`;
-        selects[1].innerHTML += `<option value="${storeId}">${lbl} (${storeId})</option>`;
+        selects[0].innerHTML += `<option value="${esc(storeId)}">${esc(lbl)} (${esc(storeId)})</option>`;
+        selects[1].innerHTML += `<option value="${esc(storeId)}">${esc(lbl)} (${esc(storeId)})</option>`;
     });
 }
 
@@ -228,11 +249,11 @@ function renderBrandsTable() {
         
         tbody.innerHTML += `
             <tr>
-                <td>${brandId}</td>
-                <td>${meta.label}</td>
-                <td><img src="${meta.icon}" style="width:30px;height:30px;object-fit:contain;"></td>
+                <td>${esc(brandId)}</td>
+                <td>${esc(meta.label)}</td>
+                <td><img src="${esc(safeUrl(meta.icon))}" style="width:30px;height:30px;object-fit:contain;"></td>
                 <td>
-                    <button class="action-btn delete-btn" onclick="deleteBrand('${brandId}')" title="حذف המاركة"><i class="fa-solid fa-trash"></i></button>
+                    <button class="action-btn delete-btn" onclick="deleteBrand(${attr(brandId)})" title="حذف המاركة"><i class="fa-solid fa-trash"></i></button>
                 </td>
             </tr>
         `;
@@ -248,7 +269,7 @@ function populateBrandSelect() {
     if(!select) return;
     select.innerHTML = '<option value="">بدون ماركة</option>';
     Object.keys(allBrandsMeta).forEach(brandId => {
-        select.innerHTML += `<option value="${brandId}">${allBrandsMeta[brandId].label}</option>`;
+        select.innerHTML += `<option value="${esc(brandId)}">${esc(allBrandsMeta[brandId].label)}</option>`;
     });
 }
 
@@ -293,7 +314,7 @@ function populateCategoryStoreSelect() {
     select.innerHTML = '<option value="" disabled selected>اختر المتجر...</option>';
     select.innerHTML += '<option value="all">كل المتاجر (عام)</option>';
     Object.keys(allStoresMeta).forEach(storeId => {
-        select.innerHTML += `<option value="${storeId}">${allStoresMeta[storeId].label}</option>`;
+        select.innerHTML += `<option value="${esc(storeId)}">${esc(allStoresMeta[storeId].label)}</option>`;
     });
 }
 
@@ -318,10 +339,10 @@ async function loadStoreCategories() {
     categories.forEach((cat, index) => {
         tbody.innerHTML += `
             <tr>
-                <td style="font-weight:bold;">${cat.name}</td>
-                <td style="color:var(--text-muted); font-size:12px;">${cat.subsList.join(' ، ')}</td>
+                <td style="font-weight:bold;">${esc(cat.name)}</td>
+                <td style="color:var(--text-muted); font-size:12px;">${esc(cat.subsList.join(' ، '))}</td>
                 <td>
-                    <button class="action-btn delete-btn" onclick="deleteCategory('${storeId}', ${index})"><i class="fa-solid fa-trash"></i></button>
+                    <button class="action-btn delete-btn" onclick="deleteCategory(${attr(storeId)}, ${index})"><i class="fa-solid fa-trash"></i></button>
                 </td>
             </tr>
         `;
@@ -428,16 +449,16 @@ function renderProductsTable() {
         
         tbody.innerHTML += `
             <tr style="${isHidden ? 'opacity:0.5;' : ''}">
-                <td><img src="${img}" alt="صورة"></td>
-                <td style="max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${name}">${name}</td>
-                <td>${price}</td>
-                <td>${p.store}</td>
-                <td>${p.main_category} / ${p.sub_category}</td>
+                <td><img src="${esc(safeUrl(img))}" alt="صورة"></td>
+                <td style="max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${esc(name)}">${esc(name)}</td>
+                <td>${esc(price)}</td>
+                <td>${esc(p.store)}</td>
+                <td>${esc(p.main_category)} / ${esc(p.sub_category)}</td>
                 <td>${statusText}</td>
                 <td>
-                    <button class="action-btn" style="color:${eyeColor};" onclick="toggleProductVisibility('${p.store}', '${p.main_category}', '${p.sub_category}', '${p.id}', ${isHidden})" title="إخفاء/إظهار">${eyeIcon}</button>
-                    <button class="action-btn edit-btn" onclick='editProduct(${JSON.stringify(p).replace(/'/g, "&#39;")})'><i class="fa-solid fa-pen-to-square"></i></button>
-                    <button class="action-btn delete-btn" onclick="deleteProduct('${p.store}', '${p.main_category}', '${p.sub_category}', '${p.id}')"><i class="fa-solid fa-trash"></i></button>
+                    <button class="action-btn" style="color:${eyeColor};" onclick="toggleProductVisibility(${attr(p.store)}, ${attr(p.main_category)}, ${attr(p.sub_category)}, ${attr(p.id)}, ${isHidden})" title="إخفاء/إظهار">${eyeIcon}</button>
+                    <button class="action-btn edit-btn" onclick="editProductById(${attr(p.store)}, ${attr(p.id)})"><i class="fa-solid fa-pen-to-square"></i></button>
+                    <button class="action-btn delete-btn" onclick="deleteProduct(${attr(p.store)}, ${attr(p.main_category)}, ${attr(p.sub_category)}, ${attr(p.id)})"><i class="fa-solid fa-trash"></i></button>
                 </td>
             </tr>
         `;
@@ -505,9 +526,9 @@ function renderMessagesTable() {
             <tr>
                 <td style="font-size:12px; color:var(--text-muted);">${date}</td>
                 <td>${typeBadge}</td>
-                <td style="max-width: 300px; white-space: normal;">${m.text}</td>
+                <td style="max-width: 300px; white-space: normal;">${esc(m.text)}</td>
                 <td>
-                    <button class="action-btn delete-btn" onclick="deleteMessage('${m.id}')"><i class="fa-solid fa-trash"></i></button>
+                    <button class="action-btn delete-btn" onclick="deleteMessage(${attr(m.id)})"><i class="fa-solid fa-trash"></i></button>
                 </td>
             </tr>
         `;
@@ -690,12 +711,12 @@ function renderDealsTable() {
         
         tbody.innerHTML += `
             <tr>
-                <td>${dealId}</td>
-                <td>${meta.label || ''} ${meta.isHidden ? '<span style="color:var(--text-danger);font-size:12px;">(مخفي)</span>' : ''}</td>
+                <td>${esc(dealId)}</td>
+                <td>${esc(meta.label || '')} ${meta.isHidden ? '<span style="color:var(--text-danger);font-size:12px;">(مخفي)</span>' : ''}</td>
                 <td>${meta.keywords || ''}</td>
                 <td>
-                    <button class="action-btn" onclick="openAddDealModal('${dealId}')" title="تعديل"><i class="fa-solid fa-edit"></i></button>
-                    <button class="action-btn delete-btn" onclick="deleteDeal('${dealId}')" title="حذف"><i class="fa-solid fa-trash"></i></button>
+                    <button class="action-btn" onclick="openAddDealModal(${attr(dealId)})" title="تعديل"><i class="fa-solid fa-edit"></i></button>
+                    <button class="action-btn delete-btn" onclick="deleteDeal(${attr(dealId)})" title="حذف"><i class="fa-solid fa-trash"></i></button>
                 </td>
             </tr>
         `;
@@ -712,7 +733,7 @@ function populateDealSelect() {
     select.innerHTML = '<option value="">بدون عرض</option>';
     Object.keys(allDealsMeta).forEach(dealId => {
         const lbl = allDealsMeta[dealId].label || dealId;
-        select.innerHTML += `<option value="${dealId}">${lbl}</option>`;
+        select.innerHTML += `<option value="${esc(dealId)}">${esc(lbl)}</option>`;
     });
 }
 
@@ -795,11 +816,11 @@ async function seedDefaults() {
         if (!brandsSnap.exists() || Object.keys(brandsSnap.val() || {}).length === 0) {
             console.log('Seeding default brands...');
             const defaultBrands = {
-                'apple': { label: 'أبل', icon: 'https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg' },
-                'samsung': { label: 'سامسونج', icon: 'samsung_logo.svg' },
-                'sony': { label: 'سوني', icon: 'https://upload.wikimedia.org/wikipedia/commons/c/ca/Sony_logo.svg' },
-                'nike': { label: 'نايك', icon: 'https://upload.wikimedia.org/wikipedia/commons/a/a6/Logo_NIKE.svg' },
-                'adidas': { label: 'أديداس', icon: 'https://upload.wikimedia.org/wikipedia/commons/2/20/Adidas_Logo.svg' }
+                'apple': { label: 'أبل', icon: 'assets/brands/apple.svg' },
+                'samsung': { label: 'سامسونج', icon: 'assets/brands/samsung.svg' },
+                'sony': { label: 'سوني', icon: 'assets/brands/sony.svg' },
+                'nike': { label: 'نايك', icon: 'assets/brands/nike.svg' },
+                'adidas': { label: 'أديداس', icon: 'assets/brands/adidas.svg' }
             };
             await database.ref('metadata/brands').set(defaultBrands);
         }

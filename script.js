@@ -12,6 +12,24 @@ if (!userHash) {
     localStorage.setItem('userHash', userHash);
 }
 
+// --- 🛡️ حماية XSS: كل نص قادم من قاعدة البيانات يمر من هنا قبل innerHTML ---
+function esc(v) {
+    return String(v ?? '').replace(/[&<>"'`]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','`':'&#96;'}[c]));
+}
+// قيمة آمنة داخل سمة onclick="fn(...)" كنص JS
+function attr(v) { return esc(JSON.stringify(String(v ?? ''))); }
+// يسمح فقط بروابط http/https
+function safeUrl(u) {
+    if (/^data:image\/(png|jpeg|gif|webp|svg\+xml);base64,[A-Za-z0-9+\/=]+$/.test(String(u))) return String(u);
+    try { const x = new URL(u, location.href); return (x.protocol === 'https:' || x.protocol === 'http:') ? x.href : ''; }
+    catch (e) { return ''; }
+}
+
+// الخصم: البوتات تخزنه في discount_percentage والمنتجات اليدوية في disc_percent
+function getDisc(item) {
+    return parseInt(item.discount_percentage ?? item.disc_percent) || 0;
+}
+
 // المتغيرات العالمية
 let allDeals = [];
 let userFavorites = new Set();
@@ -32,13 +50,11 @@ let appCategories = [
 ];
 
 // تهيئة النظام
-window.onload = async () => {
+async function initApp() {
+    const splashStart = Date.now();
     initTheme();
     updateThemeIcon();
     initPresence();
-    
-    // جلب مفضلة واهتمامات المستخدم أولاً
-    await fetchUserData();
     
     // مراقبة حالة الصيانة بشكل حي
     database.ref('metadata/siteSettings/maintenanceMode').on('value', snap => {
@@ -49,8 +65,8 @@ window.onload = async () => {
         }
     });
     
-    // ثم جلب العروض
-    await fetchAllData();
+    // جلب بيانات المستخدم والعروض بالتوازي (بدل الانتظار واحد بعد الثاني)
+    await Promise.all([fetchUserData(), loadUserProfile(), fetchAllData()]);
     
     // بناء المتاجر وعرض المنتجات
     renderHomeStores();
@@ -59,12 +75,19 @@ window.onload = async () => {
     
     // بدء خوارزمية الإشعارات
     startSmartNotifications();
-};
+
+    // إخفاء الإنترو: بعد جاهزية البيانات وبحد أدنى 1.2 ثانية ليظهر النبض
+    setTimeout(() => window.hideSplash && window.hideSplash(), Math.max(0, 1200 - (Date.now() - splashStart)));
+}
+
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initApp);
+else initApp();
 
 // --- 🌐 نظام التواجد (Live Users) ---
 function initPresence() {
     const amOnline = database.ref('.info/connected');
-    const userRef = database.ref('presence/' + userHash);
+    // معرّف عشوائي للجلسة حتى لا يكشف قائمة الحضور الـ userHash الحقيقي
+    const userRef = database.ref('presence/p_' + Math.random().toString(36).slice(2, 11));
     
     amOnline.on('value', function(snapshot) {
         if (snapshot.val()) {
@@ -234,9 +257,9 @@ async function fetchAllData() {
         
         allDeals = [];
 
-        for (let s of storesList) {
-            const snap = await database.ref(s).once('value');
-            const storeData = snap.val();
+        // تحميل المتاجر بالتوازي، ومن غير فرع "All" المكرر
+        const storeResults = await Promise.all(storesList.map(async s => [s, await loadStoreData(s)]));
+        for (const [s, storeData] of storeResults) {
 
             if (storeData) {
                 Object.keys(storeData).forEach(categoryKey => {
@@ -271,6 +294,24 @@ async function fetchAllData() {
     }
 }
 
+// يجلب أقسام المتجر كل قسم لوحده بالتوازي ويتجاوز "All" (نسخة مكررة تضاعف حجم التحميل)
+async function loadStoreData(store) {
+    try {
+        const url = firebaseConfig.databaseURL + '/' + encodeURIComponent(store) + '.json?shallow=true';
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('shallow failed ' + res.status);
+        const keys = Object.keys(await res.json() || {}).filter(k => k !== 'All' && k !== 'last_update');
+        const parts = await Promise.all(keys.map(k => database.ref(store + '/' + k).once('value')));
+        const out = {};
+        keys.forEach((k, i) => { out[k] = parts[i].val(); });
+        return out;
+    } catch (e) {
+        console.warn('fallback to full read for', store, e);
+        const snap = await database.ref(store).once('value');
+        return snap.val();
+    }
+}
+
 // --- 🖼️ بناء الكروت (Cards) ---
 function createCardHTML(item) {
     const displayPriceNow = item.price_now.toString().replace('ر.س', '⃁');
@@ -278,12 +319,12 @@ function createCardHTML(item) {
     const isFav = userFavorites.has(item.id);
     const favClass = isFav ? 'active' : '';
     const favIcon = isFav ? '<i class="fa-solid fa-heart"></i>' : '<i class="fa-regular fa-heart"></i>';
-    const imgUrl = item.image_url || 'https://via.placeholder.com/150';
+    const imgUrl = safeUrl(item.image_url) || 'https://via.placeholder.com/150';
     
     let storeBadge = '';
     if (window.appStoresMeta && window.appStoresMeta[item.store]) {
         let meta = window.appStoresMeta[item.store];
-        storeBadge = `<div class="${meta.cssClass || 'noon-badge-logo'}">${meta.label || item.store}</div>`;
+        storeBadge = `<div class="${esc(meta.cssClass || 'noon-badge-logo')}">${esc(meta.label || item.store)}</div>`;
     } else {
         storeBadge = item.store === 'amazon' 
             ? '<div class="amazon-badge-logo">AMAZON</div>' 
@@ -291,24 +332,24 @@ function createCardHTML(item) {
     }
         
     return `
-        <div class="card classic-card" onclick='openProductModal(${JSON.stringify(item).replace(/'/g, "&#39;")})'>
-            <button class="fav-btn ${favClass}" onclick="toggleFavorite(event, '${item.id}')" id="fav-btn-${item.id}">
+        <div class="card classic-card" onclick="openProductById(${attr(item.id)})">
+            <button class="fav-btn ${favClass}" onclick="toggleFavorite(event, ${attr(item.id)})" id="fav-btn-${esc(item.id)}">
                 ${favIcon}
             </button>
             <div class="store-badge">${storeBadge}</div>
             
             <div class="card-image-container">
-                <img src="${imgUrl}" alt="صورة المنتج" loading="lazy">
+                <img src="${esc(imgUrl)}" alt="صورة المنتج" loading="lazy">
             </div>
             
             <div class="product-info">
-                <div class="product-title">${item.name}</div>
+                <div class="product-title">${esc(item.name)}</div>
                 <div class="price-container">
-                    <span class="price-now">${displayPriceNow}</span>
+                    <span class="price-now">${esc(displayPriceNow)}</span>
                     ${displayPriceBefore && displayPriceBefore !== "0" && displayPriceBefore !== "0.0" ? `
                         <div style="display:flex; align-items:center; gap:5px;">
-                            <span class="price-old">${displayPriceBefore}</span>
-                            <span class="discount-badge" style="margin:0; padding:1px 4px; font-size:9px;">${item.disc_percent}%</span>
+                            <span class="price-old">${esc(displayPriceBefore)}</span>
+                            <span class="discount-badge" style="margin:0; padding:1px 4px; font-size:9px;">${getDisc(item)}%</span>
                         </div>
                     ` : ''}
                 </div>
@@ -347,13 +388,13 @@ function renderHomeStores() {
         } else {
             // Generic icon for custom stores
             color = '#007bff';
-            iconHtml = `<div style="background:var(--card-bg); border: 2px solid ${color}; border-radius:50%; width:40px; height:40px; display:flex; align-items:center; justify-content:center; color:var(--text-color); font-weight:bold; font-size:18px;">${safeLabel.charAt(0)}</div>`;
+            iconHtml = `<div style="background:var(--card-bg); border: 2px solid ${color}; border-radius:50%; width:40px; height:40px; display:flex; align-items:center; justify-content:center; color:var(--text-color); font-weight:bold; font-size:18px;">${esc(safeLabel.charAt(0))}</div>`;
         }
         
         html += `
-            <div class="box-card-small classic-card" onclick="filterByStore('${storeId}')" style="--cat-color: ${color};">
+            <div class="box-card-small classic-card" onclick="filterByStore(${attr(storeId)})" style="--cat-color: ${color};">
                 <div class="box-icon">${iconHtml}</div>
-                <h3 class="box-name" style="${storeId==='amazon' ? 'margin-top:10px;' : ''}">${safeLabel}</h3>
+                <h3 class="box-name" style="${storeId==='amazon' ? 'margin-top:10px;' : ''}">${esc(safeLabel)}</h3>
             </div>
         `;
     });
@@ -378,11 +419,13 @@ function renderHomeBrands() {
     brandKeys.forEach(brandId => {
         const meta = window.appBrandsMeta[brandId];
         html += `
-            <div class="box-card-small classic-card" onclick="filterByBrand('${brandId}')">
+            <div class="box-card-small classic-card" onclick="filterByBrand(${attr(brandId)})">
                 <div class="box-icon" style="height: 40px; display: flex; align-items: center; justify-content: center; margin-bottom: 15px;">
-                    <img src="${meta.icon}" style="max-width: 100%; max-height: 100%; object-fit: contain;" alt="${meta.label}">
+                    ${safeUrl(meta.icon)
+                        ? `<img src="${esc(safeUrl(meta.icon))}" style="max-width: 100%; max-height: 100%; object-fit: contain;" alt="${esc(meta.label)}">`
+                        : `<div style="font-weight:900; font-size:22px; color:var(--text-color);">${esc(String(meta.label || brandId).charAt(0))}</div>`}
                 </div>
-                <h3 class="box-name">${meta.label}</h3>
+                <h3 class="box-name">${esc(meta.label)}</h3>
             </div>
         `;
     });
@@ -411,9 +454,9 @@ function renderHomeDeals() {
         
         const color = colors[index % colors.length];
         html += `
-            <div class="box-card-small classic-card" onclick="filterByDealType('${dealId}')" style="--cat-color: ${color};">
+            <div class="box-card-small classic-card"  onclick="filterByDealType(${attr(dealId)})" style="--cat-color: ${color};">
                 <div class="box-icon" style="color: ${color};"><i class="fa-solid fa-gift"></i></div>
-                <h3 class="box-name">${meta.label || dealId}</h3>
+                <h3 class="box-name">${esc(meta.label || dealId)}</h3>
             </div>
         `;
     });
@@ -626,9 +669,9 @@ function renderStoreCategories(categories) {
         let iconHtml = `<div class="box-icon" style="color: ${style.color};"><i class="fa-solid ${style.icon}"></i></div>`;
         
         grid.innerHTML += `
-            <div class="box-card-small classic-card" onclick="filterByCategory('${cat.name}')" style="--cat-color: ${style.color};">
+            <div class="box-card-small classic-card"  onclick="filterByCategory(${attr(cat.name)})" style="--cat-color: ${style.color};">
                 ${iconHtml}
-                <h3 class="box-name" style="margin-top:10px;">${cat.name}</h3>
+                <h3 class="box-name" style="margin-top:10px;">${esc(cat.name)}</h3>
             </div>
         `;
     });
@@ -643,7 +686,7 @@ function filterByDealType(type) {
     document.getElementById('searchSuggestions').style.display = 'none'; // إخفاء الاقتراحات
     
     if (type === '50plus') {
-        filtered = allDeals.filter(d => parseInt(d.disc_percent) >= 50);
+        filtered = allDeals.filter(d => getDisc(d) >= 50);
         title = "🔥 صيدات 50%+";
     } 
     else if (type === 'best') {
@@ -706,6 +749,7 @@ function toggleFavorite(event, productId) {
         btn.classList.add('active');
         btn.innerHTML = '<i class="fa-solid fa-heart"></i>';
         database.ref('users/' + userHash + '/favorites/' + productId).set(true);
+        trackInteraction(allDeals.find(d => d.id === productId), 3);
     }
 }
 
@@ -716,6 +760,74 @@ function trackInterest(category) {
     if(!category) return;
     userInterests[category] = (userInterests[category] || 0) + 1;
     database.ref('users/' + userHash + '/interests').set(userInterests);
+}
+
+// --- 🎯 ملف اهتمامات المستخدم (قسم / فرع / ماركة / متجر) ---
+let userProfile = { cats: {}, subs: {}, brands: {}, stores: {} };
+let profileSaveTimer = null;
+
+function pKey(v) { return String(v || '').trim().toLowerCase().replace(/[.$#\[\]\/]/g, '_').slice(0, 60); }
+
+async function loadUserProfile() {
+    try {
+        const snap = await database.ref('users/' + userHash + '/profile').once('value');
+        if (snap.exists()) {
+            const v = snap.val();
+            userProfile = { cats: v.cats || {}, subs: v.subs || {}, brands: v.brands || {}, stores: v.stores || {} };
+        }
+    } catch (e) { console.error(e); }
+}
+
+// weight: 1 = فتح منتج، 3 = إضافة للمفضلة، 5 = الانتقال لصفحة المتجر
+function trackInteraction(item, weight) {
+    if (!item) return;
+    const bump = (bucket, key) => { const k = pKey(key); if (k) userProfile[bucket][k] = (userProfile[bucket][k] || 0) + weight; };
+    bump('cats', item.main_category);
+    bump('subs', item.sub_category);
+    bump('brands', item.brand);
+    bump('stores', item.store);
+    clearTimeout(profileSaveTimer);
+    profileSaveTimer = setTimeout(() => {
+        database.ref('users/' + userHash + '/profile').set(userProfile).catch(console.error);
+    }, 1500);
+}
+
+function maxOf(obj) { return Math.max(1, ...Object.values(obj)); }
+
+function scoreDeal(d) {
+    const cm = maxOf(userProfile.cats), sm = maxOf(userProfile.subs), bm = maxOf(userProfile.brands), stm = maxOf(userProfile.stores);
+    const interest =
+        3 * ((userProfile.cats[pKey(d.main_category)] || 0) / cm) +
+        2 * ((userProfile.subs[pKey(d.sub_category)] || 0) / sm) +
+        2 * ((userProfile.brands[pKey(d.brand)] || 0) / bm) +
+        1 * ((userProfile.stores[pKey(d.store)] || 0) / stm);
+    return { interest, total: interest + getDisc(d) / 50 };
+}
+
+function getForYouPicks() {
+    const hasHistory = Object.keys(userProfile.cats).length > 0;
+    if (hasHistory) {
+        const picks = allDeals
+            .map(d => ({ d, s: scoreDeal(d) }))
+            .filter(x => x.s.interest > 0 && getDisc(x.d) >= 5)
+            .sort((a, b) => b.s.total - a.s.total)
+            .slice(0, 30).map(x => x.d);
+        if (picks.length) return { picks, personalized: true };
+    }
+    return { picks: [...allDeals].sort((a, b) => getDisc(b) - getDisc(a)).slice(0, 20), personalized: false };
+}
+
+function showForYouView() {
+    setActiveNav('navForYou');
+    isShowingFavorites = true; // نفس سلوك المفضلة: زر الرجوع يعيدك للرئيسية
+    document.getElementById('searchSuggestions').style.display = 'none';
+    if (window.closeProductModal) window.closeProductModal();
+
+    const { picks, personalized } = getForYouPicks();
+    showProductsView(personalized ? '✨ عروض خاصة فيك' : '✨ أقوى الخصومات (تصفّح لنعرف ذوقك)');
+    renderGrid(picks);
+    const inlineCats = document.getElementById('inlineSubCategories');
+    if (inlineCats) inlineCats.style.display = 'none';
 }
 
 function startSmartNotifications() {
@@ -732,11 +844,11 @@ function startSmartNotifications() {
         const topInterest = Object.keys(userInterests).sort((a, b) => userInterests[b] - userInterests[a])[0];
         if (!topInterest) return;
 
-        const deals = allDeals.filter(d => d.main_category === topInterest && parseInt(d.disc_percent) >= 30);
+        const deals = allDeals.filter(d => d.main_category === topInterest && getDisc(d) >= 30);
         if (deals.length > 0) {
             const bestDeal = deals[Math.floor(Math.random() * deals.length)];
             new Notification("🔥 صيدة جديدة تهمك!", {
-                body: `خصم ${bestDeal.disc_percent}% على ${bestDeal.name}`,
+                body: `خصم ${getDisc(bestDeal)}% على ${bestDeal.name}`,
                 icon: 'favicon.ico'
             });
         }
@@ -757,15 +869,15 @@ function handleSmartSearch() {
     
     if (matches.length > 0) {
         suggestionsBox.innerHTML = matches.slice(0, 5).map(m => {
-            let imgUrl = m.image_url;
+            let imgUrl = safeUrl(m.image_url);
             if(!imgUrl || imgUrl === 'null' || imgUrl === 'undefined') imgUrl = 'https://via.placeholder.com/150';
             
             return `
-                <div class="suggestion-box" onclick="executeSearch('${m.id}')">
-                    <img src="${imgUrl}" alt="صورة المنتج" class="sug-img">
+                <div class="suggestion-box" onclick="executeSearch(${attr(m.id)})">
+                    <img src="${esc(imgUrl)}" alt="صورة المنتج" class="sug-img">
                     <div class="sug-info">
-                        <div class="sug-title">${m.name}</div>
-                        <div class="sug-price">${m.price_now} ريال</div>
+                        <div class="sug-title">${esc(m.name)}</div>
+                        <div class="sug-price">${esc(m.price_now)} ريال</div>
                     </div>
                     <i class="fa-solid fa-arrow-left" style="color:var(--text-gray); font-size:14px; margin-right:10px;"></i>
                 </div>
@@ -796,6 +908,11 @@ function submitSearch(event) {
     
     // إخفاء الكيبورد في الجوال بعد البحث
     document.getElementById('searchInput').blur();
+}
+
+function openProductById(id) {
+    const item = allDeals.find(d => d.id === id);
+    if (item) openProductModal(item);
 }
 
 function executeSearch(productId) {
@@ -847,6 +964,7 @@ let currentModalProduct = null;
 
 window.openProductModal = function(item) {
     trackInterest(item.main_category);
+    trackInteraction(item, 1);
     currentModalProduct = item;
     
     const modal = document.getElementById('productModal');
@@ -861,7 +979,7 @@ window.openProductModal = function(item) {
     
     let descRaw = item.description || item.desc || 'لا يوجد وصف متاح لهذا المنتج حالياً.';
     
-    document.getElementById('modalImg').src = img || 'https://via.placeholder.com/300';
+    document.getElementById('modalImg').src = safeUrl(img) || 'https://via.placeholder.com/300';
     document.getElementById('modalName').innerText = name;
     document.getElementById('modalBrand').innerText = brand;
     document.getElementById('modalDesc').innerText = descRaw;
@@ -885,7 +1003,9 @@ window.closeProductModal = function() {
 window.openModalUrl = function() {
     if (currentModalProduct) {
         let url = currentModalProduct.link || currentModalProduct.url || currentModalProduct.product_url;
-        if (url) window.open(url, '_blank');
+        url = safeUrl(url);
+        trackInteraction(currentModalProduct, 5);
+        if (url) window.open(url, '_blank', 'noopener,noreferrer');
     }
 };
 
@@ -898,6 +1018,7 @@ window.toggleModalFavorite = function() {
     } else {
         userFavorites.add(id);
         database.ref('users/' + userHash + '/favorites/' + id).set(true);
+        trackInteraction(currentModalProduct, 3);
     }
     updateModalFavBtn();
     
